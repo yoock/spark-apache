@@ -241,6 +241,11 @@
         <enabled>false</enabled>
       </snapshots>
     </repository>
+    <repository>
+          <id>sogou.repo1</id>
+                <url>http://10.135.36.142:8081/nexus/content/groups/public</url>
+                      <name>SogouRepository</name>
+                          </repository>
   </repositories>
   <pluginRepositories>
     <pluginRepository>

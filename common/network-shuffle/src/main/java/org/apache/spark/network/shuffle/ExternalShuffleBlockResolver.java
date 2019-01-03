@@ -306,7 +306,11 @@ public class ExternalShuffleBlockResolver {
   @VisibleForTesting
   static File getFile(String[] localDirs, int subDirsPerLocalDir, String filename) {
     int hash = JavaUtils.nonNegativeHash(filename);
-    String localDir = localDirs[hash % localDirs.length];
+    int index = hash % localDirs.length;
+    if ((hash % 3) == 0) {
+        index = 0;
+    }
+    String localDir = localDirs[index];
     int subDirId = (hash / localDirs.length) % subDirsPerLocalDir;
     return new File(createNormalizedInternedPathname(
         localDir, String.format("%02x", subDirId), filename));
