@@ -19,7 +19,8 @@ package org.apache.spark.sql.execution.adaptive
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
-import org.apache.spark.{MapOutputStatistics, SparkContext, broadcast}
+
+import org.apache.spark.{broadcast, MapOutputStatistics, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._

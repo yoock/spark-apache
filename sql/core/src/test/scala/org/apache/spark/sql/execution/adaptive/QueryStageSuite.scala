@@ -343,6 +343,241 @@ class QueryStageSuite extends SparkFunSuite with BeforeAndAfterAll {
     }
   }
 
+  test("adaptive skewed join: left/right outer join and skewed on right side") {
+    val spark = defaultSparkSession
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_JOIN_ENABLED.key, "false")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_JOIN_ENABLED.key, "true")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_PARTITION_ROW_COUNT_THRESHOLD.key, 10)
+    withSparkSession(spark) { spark: SparkSession =>
+      val df1 =
+        spark
+          .range(0, 10, 1, 2)
+          .selectExpr("id % 5 as key1", "id as value1")
+      val df2 =
+        spark
+          .range(0, 1000, 1, numInputPartitions)
+          .selectExpr("id % 1 as key2", "id as value2")
+
+      val leftOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "left").select(col("key1"), col("value2"))
+      val rightOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "right").select(col("key1"), col("value2"))
+
+      // Before Execution, there is one SortMergeJoin
+      val smjBeforeExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForLeftOuter.length === 1)
+
+      val smjBeforeExecutionForRightOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForRightOuter.length === 1)
+
+      // Check the answer.
+      val expectedAnswerForLeftOuter =
+        spark
+          .range(0, 1000)
+          .selectExpr("0 as key", "id as value")
+          .union(spark.range(0, 1000).selectExpr("0 as key", "id as value"))
+          .union(spark.range(0, 10, 1).filter(_ % 5 != 0).selectExpr("id % 5 as key1", "null"))
+      checkAnswer(
+        leftOuterJoin,
+        expectedAnswerForLeftOuter.collect())
+
+      val expectedAnswerForRightOuter =
+        spark
+          .range(0, 1000)
+          .selectExpr("0 as key", "id as value")
+          .union(spark.range(0, 1000).selectExpr("0 as key", "id as value"))
+      checkAnswer(
+        rightOuterJoin,
+        expectedAnswerForRightOuter.collect())
+
+      // For the left outer join case: during execution, the SMJ can not be translated to any sub
+      // joins due to the skewed side is on the right but the join type is left outer
+      // (not correspond with each other)
+      val smjAfterExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjAfterExecutionForLeftOuter.length === 1)
+
+      // For the right outer join case: during execution, the SMJ is changed to Union of SMJ + 5 SMJ
+      // joins due to the skewed side is on the right and the join type is right
+      // outer (correspond with each other)
+      val smjAfterExecutionForRightOuter = rightOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+
+      assert(smjAfterExecutionForRightOuter.length === 6)
+      val queryStageInputs = rightOuterJoin.queryExecution.executedPlan.collect {
+        case q: ShuffleQueryStageInput => q
+      }
+      assert(queryStageInputs.length === 2)
+      assert(queryStageInputs(0).skewedPartitions === queryStageInputs(1).skewedPartitions)
+      assert(queryStageInputs(0).skewedPartitions === Some(Set(0)))
+
+    }
+  }
+
+  test("adaptive skewed join: left/right outer join and skewed on left side") {
+    val spark = defaultSparkSession
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_JOIN_ENABLED.key, "false")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_JOIN_ENABLED.key, "true")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_PARTITION_ROW_COUNT_THRESHOLD.key, 10)
+    withSparkSession(spark) { spark: SparkSession =>
+      val df1 =
+        spark
+          .range(0, 1000, 1, numInputPartitions)
+          .selectExpr("id % 1 as key1", "id as value1")
+      val df2 =
+        spark
+          .range(0, 10, 1, 2)
+          .selectExpr("id % 5 as key2", "id as value2")
+
+      val leftOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "left").select(col("key1"), col("value1"))
+      val rightOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "right").select(col("key1"), col("value1"))
+
+      // Before Execution, there is one SortMergeJoin
+      val smjBeforeExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForLeftOuter.length === 1)
+
+      val smjBeforeExecutionForRightOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForRightOuter.length === 1)
+
+      // Check the answer.
+      val expectedAnswerForLeftOuter =
+        spark
+          .range(0, 1000)
+          .selectExpr("0 as key", "id as value")
+          .union(spark.range(0, 1000).selectExpr("0 as key", "id as value"))
+      checkAnswer(
+        leftOuterJoin,
+        expectedAnswerForLeftOuter.collect())
+
+      val expectedAnswerForRightOuter =
+        spark
+          .range(0, 1000)
+          .selectExpr("0 as key", "id as value")
+          .union(spark.range(0, 1000).selectExpr("0 as key", "id as value"))
+          .union(spark.range(0, 10, 1).filter(_ % 5 != 0).selectExpr("null", "null"))
+
+      checkAnswer(
+        rightOuterJoin,
+        expectedAnswerForRightOuter.collect())
+
+      // For the left outer join case: during execution, the SMJ is changed to Union of SMJ + 5 SMJ
+      // joins due to the skewed side is on the left and the join type is left outer
+      // (correspond with each other)
+      val smjAfterExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjAfterExecutionForLeftOuter.length === 6)
+
+      // For the right outer join case: during execution, the SMJ can not be translated to any sub
+      // joins due to the skewed side is on the left but the join type is right outer
+      // (not correspond with each other)
+      val smjAfterExecutionForRightOuter = rightOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+
+      assert(smjAfterExecutionForRightOuter.length === 1)
+      val queryStageInputs = leftOuterJoin.queryExecution.executedPlan.collect {
+        case q: ShuffleQueryStageInput => q
+      }
+      assert(queryStageInputs.length === 2)
+      assert(queryStageInputs(0).skewedPartitions === queryStageInputs(1).skewedPartitions)
+      assert(queryStageInputs(0).skewedPartitions === Some(Set(0)))
+
+    }
+  }
+
+  test("adaptive skewed join: left/right outer join and skewed on both sides") {
+    val spark = defaultSparkSession
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_JOIN_ENABLED.key, "false")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_JOIN_ENABLED.key, "true")
+    spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_SKEWED_PARTITION_ROW_COUNT_THRESHOLD.key, 10)
+    withSparkSession(spark) { spark: SparkSession =>
+      import spark.implicits._
+      val df1 =
+        spark
+          .range(0, 100, 1, numInputPartitions)
+          .selectExpr("id % 1 as key1", "id as value1")
+      val df2 =
+        spark
+          .range(0, 100, 1, numInputPartitions)
+          .selectExpr("id % 1 as key2", "id as value2")
+
+      val leftOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "left").select(col("key1"), col("value2"))
+      val rightOuterJoin =
+        df1.join(df2, col("key1") === col("key2"), "right").select(col("key1"), col("value2"))
+
+      // Before Execution, there is one SortMergeJoin
+      val smjBeforeExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForLeftOuter.length === 1)
+
+      val smjBeforeExecutionForRightOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjBeforeExecutionForRightOuter.length === 1)
+
+      // Check the answer.
+      val expectedAnswerForLeftOuter =
+        spark
+          .range(0, 100)
+          .flatMap(i => Seq.fill(100)(i))
+          .selectExpr("0 as key", "value")
+
+      checkAnswer(
+        leftOuterJoin,
+        expectedAnswerForLeftOuter.collect())
+
+      val expectedAnswerForRightOuter =
+        spark
+          .range(0, 100)
+           .flatMap(i => Seq.fill(100)(i))
+          .selectExpr("0 as key", "value")
+      checkAnswer(
+        rightOuterJoin,
+        expectedAnswerForRightOuter.collect())
+
+      // For the left outer join case: during execution, although the skewed sides include the
+      // right, the SMJ is still changed to Union of SMJ + 5 SMJ joins due to the skewed sides
+      // also include the left, so we split the left skewed partition
+      // (correspondence exists)
+      val smjAfterExecutionForLeftOuter = leftOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+      assert(smjAfterExecutionForLeftOuter.length === 6)
+
+      // For the right outer join case: during execution, although the skewed sides include the
+      // left, the SMJ is still changed to Union of SMJ + 5 SMJ joins due to the skewed sides
+      // also include the right, so we split the right skewed partition
+      // (correspondence exists)
+      val smjAfterExecutionForRightOuter = rightOuterJoin.queryExecution.executedPlan.collect {
+        case smj: SortMergeJoinExec => smj
+      }
+
+      assert(smjAfterExecutionForRightOuter.length === 6)
+      val queryStageInputs = rightOuterJoin.queryExecution.executedPlan.collect {
+        case q: ShuffleQueryStageInput => q
+      }
+      assert(queryStageInputs.length === 2)
+      assert(queryStageInputs(0).skewedPartitions === queryStageInputs(1).skewedPartitions)
+      assert(queryStageInputs(0).skewedPartitions === Some(Set(0)))
+
+    }
+  }
+
   test("row count statistics, compressed") {
     val spark = defaultSparkSession
     withSparkSession(spark) { spark: SparkSession =>

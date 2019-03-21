@@ -17,9 +17,10 @@
 
 package org.apache.spark.sql.execution.adaptive
 
+import scala.collection.immutable.Nil
 import scala.collection.mutable
 
-import org.apache.spark.sql.catalyst.plans.{Cross, Inner, JoinType, LeftSemi}
+import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution.{SortExec, SparkPlan, UnionExec}
 import org.apache.spark.sql.execution.joins.SortMergeJoinExec
@@ -27,6 +28,8 @@ import org.apache.spark.sql.execution.statsEstimation.PartitionStatistics
 import org.apache.spark.sql.internal.SQLConf
 
 case class HandleSkewedJoin(conf: SQLConf) extends Rule[SparkPlan] {
+
+  private val supportedJoinTypes = Inner :: Cross :: LeftSemi :: LeftOuter:: RightOuter :: Nil
 
   private def isSizeSkewed(size: Long, medianSize: Long): Boolean = {
     size > medianSize * conf.adaptiveSkewedFactor &&
@@ -96,13 +99,24 @@ case class HandleSkewedJoin(conf: SQLConf) extends Rule[SparkPlan] {
     equallyDivide(queryStageInput.numMapper, numSplits).toArray
   }
 
+  /**
+   * Base optimization support check: the join type is supported and plan statistics is available.
+   * Note that for some join types(like left outer), whether a certain partition can be optimized
+   * also depends on the filed isSkewAndSupportsSplit.
+   */
   private def supportOptimization(
       joinType: JoinType,
       left: QueryStageInput,
       right: QueryStageInput): Boolean = {
-    (joinType == Inner || joinType == Cross || joinType == LeftSemi) &&
+      supportedJoinTypes.contains(joinType) &&
       left.childStage.stats.getPartitionStatistics.isDefined &&
       right.childStage.stats.getPartitionStatistics.isDefined
+  }
+
+  private def supportSplitOnLeftPartition(joinType: JoinType) = joinType != RightOuter
+
+  private def supportSplitOnRightPartition(joinType: JoinType) = {
+    joinType != LeftOuter && joinType != LeftSemi
   }
 
   private def handleSkewedJoin(
@@ -131,18 +145,21 @@ case class HandleSkewedJoin(conf: SQLConf) extends Rule[SparkPlan] {
       for (partitionId <- 0 until numPartitions) {
         val isLeftSkew = isSkewed(leftStats, partitionId, leftMedSize, leftMedRowCount)
         val isRightSkew = isSkewed(rightStats, partitionId, rightMedSize, rightMedRowCount)
-        if (isLeftSkew || isRightSkew) {
+        val isSkewAndSupportsSplit =
+          (isLeftSkew && supportSplitOnLeftPartition(joinType)) ||
+            (isRightSkew && supportSplitOnRightPartition(joinType))
+
+        if (isSkewAndSupportsSplit) {
           skewedPartitions += partitionId
-          val leftMapIdStartIndices = if (isLeftSkew) {
+          val leftMapIdStartIndices = if (isLeftSkew && supportSplitOnLeftPartition(joinType)) {
             estimateMapIdStartIndices(left, partitionId, leftMedSize, leftMedRowCount)
           } else {
             Array(0)
           }
-          val rightMapIdStartIndices = if (!isRightSkew || joinType == LeftSemi) {
-            // For left semi join, we don't split the right partition
-            Array(0)
-          } else {
+          val rightMapIdStartIndices = if (isRightSkew && supportSplitOnRightPartition(joinType)) {
             estimateMapIdStartIndices(right, partitionId, rightMedSize, rightMedRowCount)
+          } else {
+            Array(0)
           }
 
           for (i <- 0 until leftMapIdStartIndices.length;
