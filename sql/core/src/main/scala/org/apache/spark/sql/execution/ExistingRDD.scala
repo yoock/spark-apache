@@ -90,7 +90,7 @@ case class ExternalRDD[T](
 
   override protected def stringArgs: Iterator[Any] = Iterator(output)
 
-  override def computeStats(): Statistics = LogicalPlanStatistics(
+  override def computeStats(): LogicalPlanStatistics = LogicalPlanStatistics(
     // TODO: Instead of returning a default value here, find a way to return a meaningful size
     // estimate for RDDs. See PR 1238 for more discussions.
     sizeInBytes = BigInt(session.sessionState.conf.defaultSizeInBytes)
@@ -171,7 +171,7 @@ case class LogicalRDD(
 
   override protected def stringArgs: Iterator[Any] = Iterator(output, isStreaming)
 
-  override def computeStats(): Statistics = LogicalPlanStatistics(
+  override def computeStats(): LogicalPlanStatistics = LogicalPlanStatistics(
     // TODO: Instead of returning a default value here, find a way to return a meaningful size
     // estimate for RDDs. See PR 1238 for more discussions.
     sizeInBytes = BigInt(session.sessionState.conf.defaultSizeInBytes)
