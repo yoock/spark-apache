@@ -1033,9 +1033,11 @@ private[spark] object MapOutputTracker extends Logging {
       } else {
         if (endPartition - startPartition > 1 && supportsContinuousBlockBatchFetch) {
           val totalSize: Long = (startPartition until endPartition).map(status.getSizeForBlock).sum
-          splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
-            ((ContinuousShuffleBlockId(shuffleId, mapId,
-              startPartition, endPartition - startPartition), totalSize))
+          if (totalSize != 0) {
+            splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
+              ((ContinuousShuffleBlockId(shuffleId, mapId,
+                startPartition, endPartition - startPartition), totalSize))
+          }
         } else {
           for (part <- startPartition until endPartition) {
             val size = status.getSizeForBlock(part)
@@ -1088,13 +1090,18 @@ private[spark] object MapOutputTracker extends Logging {
       } else {
         if (endPartition - startPartition > 1 && supportsContinuousBlockBatchFetch) {
           val totalSize: Long = (startPartition until endPartition).map(status.getSizeForBlock).sum
-          splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
-            ((ContinuousShuffleBlockId(shuffleId, mapId,
-              startPartition, endPartition - startPartition), totalSize))
+          if (totalSize != 0) {
+            splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
+              ((ContinuousShuffleBlockId(shuffleId, mapId,
+                startPartition, endPartition - startPartition), totalSize))
+          }
         } else {
           for (part <- startPartition until endPartition) {
-            splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
-              ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
+            val size = status.getSizeForBlock(part)
+            if (size != 0) {
+              splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
+                ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
+            }
           }
         }
       }
