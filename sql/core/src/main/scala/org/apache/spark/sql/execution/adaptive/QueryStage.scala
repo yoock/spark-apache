@@ -24,7 +24,7 @@ import org.apache.spark.{broadcast, MapOutputStatistics, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.plans.physical.Partitioning
+import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning, PartitioningCollection}
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate
@@ -109,7 +109,17 @@ abstract class QueryStage extends UnaryExecNode {
     }
     val childMapOutputStatistics = queryStageInputs.map(_.childStage.mapOutputStatistics)
       .filter(_ != null).toArray
-    if (childMapOutputStatistics.length > 0) {
+    // Right now, Adaptive execution only support HashPartitionings.
+    val supportAdaptive = queryStageInputs.forall{
+        _.outputPartitioning match {
+          case hash: HashPartitioning => true
+          case collection: PartitioningCollection =>
+            collection.partitionings.forall(_.isInstanceOf[HashPartitioning])
+          case _ => false
+        }
+    }
+
+    if (childMapOutputStatistics.length > 0 && supportAdaptive) {
       val exchangeCoordinator = new ExchangeCoordinator(
         conf.targetPostShuffleInputSize,
         conf.adaptiveTargetPostShuffleRowCount,
