@@ -1,5 +1,5 @@
 # Spark SQL Adaptive Execution
-There are three main features in Adaptive Execution, including auto setting the shuffle partition number, optimi
+There are three main features in Adaptive Execution, including auto setting the shuffle partition number, optimizing join strategy at runtime and handling skewed join. These features can be enabled separately. To start with Adaptive Exection on Spark 2.3, please build branch `ae-2.3-08` and at least set `spark.sql.adaptive.enabled` to true. For users who enabled external shuffle service, please also upgrade external shuffle service to use adaptive execution feature.
 An Engilish version design doc is available on [google doc](https://docs.google.com/document/d/1mpVjvQZRAkD-Ggy6
 ## Auto Setting The Shuffle Partition Number
 <table class="table">
