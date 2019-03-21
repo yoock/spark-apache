@@ -181,8 +181,8 @@ case class InMemoryTableScanExec(
     relation.cachedPlan.outputOrdering.map(updateAttribute(_).asInstanceOf[SortOrder])
 
   // Keeps relation's partition statistics because we don't serialize relation.
-  private val stats = relation.partitionStatistics
-  private def statsFor(a: Attribute) = stats.forAttribute(a)
+  private val partitionStats = relation.partitionStatistics
+  private def statsFor(a: Attribute) = partitionStats.forAttribute(a)
 
   // Currently, only use statistics from atomic types except binary type only.
   private object ExtractableLiteral {
@@ -249,7 +249,7 @@ case class InMemoryTableScanExec(
         filter.map(
           BindReferences.bindReference(
             _,
-            stats.schema,
+            partitionStats.schema,
             allowFailures = true))
 
       boundFilter.foreach(_ =>
@@ -272,7 +272,7 @@ case class InMemoryTableScanExec(
   private def filteredCachedBatches(): RDD[CachedBatch] = {
     // Using these variables here to avoid serialization of entire objects (if referenced directly)
     // within the map Partitions closure.
-    val schema = stats.schema
+    val schema = partitionStats.schema
     val schemaIndex = schema.zipWithIndex
     val buffers = relation.cacheBuilder.cachedColumnBuffers
 
