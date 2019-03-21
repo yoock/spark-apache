@@ -308,6 +308,13 @@ object SQLConf {
     .longConf
     .createWithDefault(10L * 1000 * 1000)
 
+  val ADAPTIVE_EXECUTION_SKEWED_PARTITION_MAX_SPLITS =
+    buildConf("spark.sql.adaptive.skewedPartitionMaxSplits")
+    .doc("Configures the maximum number of task to handle a skewed partition in adaptive skewed" +
+      "join.")
+    .intConf
+    .createWithDefault(5)
+
   val ADAPTIVE_EXECUTION_TARGET_POSTSHUFFLE_ROW_COUNT =
     buildConf("spark.sql.adaptive.shuffle.targetPostShuffleRowCount")
     .doc("The target post-shuffle row count of a task.")
@@ -1719,13 +1726,15 @@ class SQLConf extends Serializable with Logging {
 
   def adaptiveSkewedJoinEnabled: Boolean = getConf(ADAPTIVE_EXECUTION_SKEWED_JOIN_ENABLED)
 
-  def adaptiveSkewedFactor : Int = getConf(ADAPTIVE_EXECUTION_SKEWED_PARTITION_FACTOR)
+  def adaptiveSkewedFactor: Int = getConf(ADAPTIVE_EXECUTION_SKEWED_PARTITION_FACTOR)
 
-  def adaptiveSkewedSizeThreshold : Long =
+  def adaptiveSkewedSizeThreshold: Long =
     getConf(ADAPTIVE_EXECUTION_SKEWED_PARTITION_SIZE_THRESHOLD)
 
-  def adaptiveSkewedRowCountThreshold : Long =
+  def adaptiveSkewedRowCountThreshold: Long =
     getConf(ADAPTIVE_EXECUTION_SKEWED_PARTITION_ROW_COUNT_THRESHOLD)
+
+  def adaptiveSkewedMaxSplits: Int = getConf(ADAPTIVE_EXECUTION_SKEWED_PARTITION_MAX_SPLITS)
 
   def adaptiveTargetPostShuffleRowCount: Long =
     getConf(ADAPTIVE_EXECUTION_TARGET_POSTSHUFFLE_ROW_COUNT)

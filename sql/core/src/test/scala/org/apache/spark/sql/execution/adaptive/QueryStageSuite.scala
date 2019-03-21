@@ -450,4 +450,22 @@ class QueryStageSuite extends SparkFunSuite with BeforeAndAfterAll {
       case _ =>
     }
   }
+
+  test("equally divide mappers in skewed partition") {
+    val handleSkewedJoin = HandleSkewedJoin(defaultSparkSession().sqlContext.conf)
+    val cases = Seq((0, 5), (4, 5), (15, 5), (16, 5), (17, 5), (18, 5), (19, 5), (20, 5))
+    val expects = Seq(
+      Seq(0, 0, 0, 0, 0),
+      Seq(0, 1, 2, 3, 4),
+      Seq(0, 3, 6, 9, 12),
+      Seq(0, 4, 7, 10, 13),
+      Seq(0, 4, 8, 11, 14),
+      Seq(0, 4, 8, 12, 15),
+      Seq(0, 4, 8, 12, 16),
+      Seq(0, 4, 8, 12, 16))
+    cases.zip(expects).foreach { case ((numElements, numBuckets), expect) =>
+      val answer = handleSkewedJoin.equallyDivide(numElements, numBuckets)
+      assert(answer === expect)
+    }
+  }
 }

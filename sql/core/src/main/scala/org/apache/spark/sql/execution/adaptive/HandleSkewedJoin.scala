@@ -65,6 +65,19 @@ case class HandleSkewedJoin(conf: SQLConf) extends Rule[SparkPlan] {
   }
 
   /**
+   * To equally divide n elements into m buckets, basically each bucket should have n/m elements,
+   * for the remaining n%m elements, add one more element to the first n%m buckets each. Returns
+   * a sequence with length numBuckets and each value represents the start index of each bucket.
+   */
+  def equallyDivide(numElements: Int, numBuckets: Int): Seq[Int] = {
+    val elementsPerBucket = numElements / numBuckets
+    val remaining = numElements % numBuckets
+    val splitPoint = (elementsPerBucket + 1) * remaining
+    (0 until remaining).map(_ * (elementsPerBucket + 1)) ++
+      (remaining until numBuckets).map(i => splitPoint + (i - remaining) * elementsPerBucket)
+  }
+
+  /**
    * We split the partition into several splits. Each split reads the data from several map outputs
    * ranging from startMapId to endMapId(exclusive). This method calculates the split number and
    * the startMapId for all splits.
@@ -78,14 +91,15 @@ case class HandleSkewedJoin(conf: SQLConf) extends Rule[SparkPlan] {
     val size = stats.bytesByPartitionId.get(partitionId)
     val rowCount = stats.recordStatistics.get.recordsByPartitionId(partitionId)
     val factor = Math.max(size / medianSize, rowCount / medianRowCount)
-    // We don't want to split too much. Set 5 and mapper number as the maximum.
-    val numSplits = Math.min(5, Math.min(factor.toInt, queryStageInput.numMapper))
-    val numMapperInSplit = queryStageInput.numMapper / numSplits
-    (0 until numSplits).map(_ * numMapperInSplit).toArray
+    val numSplits = Math.min(conf.adaptiveSkewedMaxSplits,
+      Math.min(factor.toInt, queryStageInput.numMapper))
+    equallyDivide(queryStageInput.numMapper, numSplits).toArray
   }
 
-  private def supportOptimization(joinType: JoinType, left: QueryStageInput, right: QueryStageInput)
-      : Boolean = {
+  private def supportOptimization(
+      joinType: JoinType,
+      left: QueryStageInput,
+      right: QueryStageInput): Boolean = {
     (joinType == Inner || joinType == Cross || joinType == LeftSemi) &&
       left.childStage.stats.getPartitionStatistics.isDefined &&
       right.childStage.stats.getPartitionStatistics.isDefined
