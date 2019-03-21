@@ -68,6 +68,7 @@ private[spark] object MapStatus {
     val verbose = Option(SparkEnv.get)
         .map(_.conf.get(config.SHUFFLE_STATISTICS_VERBOSE))
         .getOrElse(config.SHUFFLE_STATISTICS_VERBOSE.defaultValue.get)
+
     val newRecords = if (verbose) uncompressedRecords else Array[Long]()
 
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
