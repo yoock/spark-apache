@@ -140,12 +140,12 @@ case class OptimizeJoin(conf: SQLConf) extends Rule[SparkPlan] {
             removeSort(right))
 
           val newChild = queryStage.child.transformDown {
-            case s: SortMergeJoinExec if (s.fastEquals(smj)) => broadcastJoin
+            case s: SortMergeJoinExec if s.fastEquals(smj) => broadcastJoin
           }
 
           val broadcastSidePlan = buildSide match {
-            case BuildLeft => (removeSort(left))
-            case BuildRight => (removeSort(right))
+            case BuildLeft => removeSort(left)
+            case BuildRight => removeSort(right)
           }
           // Local shuffle read less partitions based on broadcastSide's row statistics
           joinType match {
@@ -163,8 +163,14 @@ case class OptimizeJoin(conf: SQLConf) extends Rule[SparkPlan] {
             case e: ShuffleExchangeExec => e
           }.length
 
-          if (conf.adaptiveAllowAdditionShuffle || numExchanges == 0 ||
-            (queryStage.isInstanceOf[ShuffleQueryStage] && numExchanges <=  1)) {
+          val topShuffleCheck = queryStage match {
+            case _: ShuffleQueryStage => afterEnsureRequirements.isInstanceOf[ShuffleExchangeExec]
+            case _ => true
+          }
+          val allowAdditionalShuffle = conf.adaptiveAllowAdditionShuffle
+          val noAdditionalShuffle = (numExchanges == 0) ||
+            (queryStage.isInstanceOf[ShuffleQueryStage] && numExchanges <=  1)
+          if (topShuffleCheck && (allowAdditionalShuffle || noAdditionalShuffle)) {
             // Update the plan in queryStage
             queryStage.child = newChild
             broadcastJoin
