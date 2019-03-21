@@ -25,6 +25,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.execution.{ColumnarBatchScan, LeafExecNode, SparkPlan, WholeStageCodegenExec}
+import org.apache.spark.sql.execution.statsEstimation.Statistics
 import org.apache.spark.sql.execution.vectorized._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
@@ -309,5 +310,10 @@ case class InMemoryTableScanExec(
     } else {
       inputRDD
     }
+  }
+
+  override def computeStats(): Statistics = {
+    val stats = relation.computeStats()
+    Statistics(stats.sizeInBytes)
   }
 }
