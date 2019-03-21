@@ -61,16 +61,15 @@ private[spark] object MapStatus {
 
   // we use Array[Long]() as uncompressedRecords's default value,
   // main consideration is ser/deser do not accept null.
-  def apply(loc: BlockManagerId, uncompressedSizes: Array[Long],
-     uncompressedRecords: Array[Long] = Array[Long]()): MapStatus = {
+  def apply(
+      loc: BlockManagerId,
+      uncompressedSizes: Array[Long],
+      uncompressedRecords: Array[Long] = Array[Long]()): MapStatus = {
     val verbose = Option(SparkEnv.get)
         .map(_.conf.get(config.SHUFFLE_STATISTICS_VERBOSE))
         .getOrElse(config.SHUFFLE_STATISTICS_VERBOSE.defaultValue.get)
-    val newRecords = if (verbose) {
-      uncompressedRecords
-    } else {
-      Array[Long]()
-    }
+    val newRecords = if (verbose) uncompressedRecords else Array[Long]()
+
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
       HighlyCompressedMapStatus(loc, uncompressedSizes, newRecords)
     } else {
