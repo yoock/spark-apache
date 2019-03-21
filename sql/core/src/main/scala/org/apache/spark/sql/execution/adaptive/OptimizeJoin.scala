@@ -81,12 +81,6 @@ case class OptimizeJoin(conf: SQLConf) extends Rule[SparkPlan] {
   private def optimizeForLocalShuffleReadLessPartitions(
       broadcastSidePlan: SparkPlan,
       childrenPlans: Seq[SparkPlan]) = {
-    // All shuffle read should be local instead of remote
-    childrenPlans.foreach {
-      case input: ShuffleQueryStageInput =>
-        input.isLocalShuffle = true
-      case _ =>
-    }
     // If there's shuffle write on broadcast side, then find the partitions with 0 size and ignore
     // reading them in local shuffle read.
     broadcastSidePlan match {
@@ -138,6 +132,12 @@ case class OptimizeJoin(conf: SQLConf) extends Rule[SparkPlan] {
             condition,
             removeSort(left),
             removeSort(right))
+          // All shuffle read should be local instead of remote
+          broadcastJoin.children.foreach {
+            case input: ShuffleQueryStageInput =>
+              input.isLocalShuffle = true
+            case _ =>
+          }
 
           val newChild = queryStage.child.transformDown {
             case s: SortMergeJoinExec if s.fastEquals(smj) => broadcastJoin
@@ -177,11 +177,7 @@ case class OptimizeJoin(conf: SQLConf) extends Rule[SparkPlan] {
           } else {
             logWarning("Join optimization is not applied due to additional shuffles will be " +
               "introduced. Enable spark.sql.adaptive.allowAdditionalShuffle to allow it.")
-            joinType match {
-              case _: InnerLike =>
-                revertShuffleReadChanges(broadcastJoin.children)
-              case _ =>
-            }
+            revertShuffleReadChanges(broadcastJoin.children)
             smj
           }
         }.getOrElse(smj)
