@@ -336,7 +336,9 @@ private[spark] class SparkSubmit extends Logging {
 
     // assure a keytab is available from any place in a JVM
     if (clusterManager == YARN || clusterManager == LOCAL || isMesosClient) {
-      if (args.principal != null) {
+      if (args.useHas) {
+         UserGroupInformation.loginUserFromHas()
+      } else if (args.principal != null) {
         if (args.keytab != null) {
           require(new File(args.keytab).exists(), s"Keytab file: ${args.keytab} does not exist")
           // Add keytab and principal configurations in sysProps to make them available

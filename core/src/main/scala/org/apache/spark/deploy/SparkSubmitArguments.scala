@@ -83,6 +83,7 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   var submissionToKill: String = null
   var submissionToRequestStatusFor: String = null
   var useRest: Boolean = false // used internally
+  var useHas: Boolean = false
 
   /** Default properties present in the currently defined defaults file. */
   lazy val defaultSparkProperties: HashMap[String, String] = {
@@ -465,6 +466,9 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
 
       case VERSION =>
         action = SparkSubmitAction.PRINT_VERSION
+      
+      case USE_HAS =>
+        useHas = true
 
       case USAGE_ERROR =>
         printUsageAndExit(1)

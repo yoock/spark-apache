@@ -76,6 +76,7 @@ class SparkSubmitOptionParser {
   protected final String PRINCIPAL = "--principal";
   protected final String QUEUE = "--queue";
 
+  protected final String USE_HAS = "--use-has";
   /**
    * This is the canonical list of spark-submit options. Each entry in the array contains the
    * different aliases for the same option; the first element of each entry is the "official"
@@ -115,6 +116,7 @@ class SparkSubmitOptionParser {
     { REPOSITORIES },
     { STATUS },
     { TOTAL_EXECUTOR_CORES },
+    { USE_HAS },
   };
 
   /**
