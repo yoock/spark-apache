@@ -28,7 +28,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partition
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate
-import org.apache.spark.util.ThreadUtils
+import org.apache.spark.util.{SparkUncaughtExceptionHandler, ThreadUtils}
 
 /**
  * In adaptive execution mode, an execution plan is divided into multiple QueryStages. Each
@@ -97,6 +97,11 @@ abstract class QueryStage extends UnaryExecNode {
     if (prepared) {
       return
     }
+
+    // set the uncaughtExceptionHandler to catch the exception of child thread in the
+    // parent thread and then prevent the hang issue
+    Thread.setDefaultUncaughtExceptionHandler(new SparkUncaughtExceptionHandler())
+
     // 1. Execute childStages
     executeChildStages()
 
