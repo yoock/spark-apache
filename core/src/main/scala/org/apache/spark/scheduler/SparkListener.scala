@@ -156,6 +156,9 @@ case class SparkListenerNodeUnblacklisted(time: Long, hostId: String)
 @DeveloperApi
 case class SparkListenerBlockUpdated(blockUpdatedInfo: BlockUpdatedInfo) extends SparkListenerEvent
 
+@DeveloperApi
+case class SparkListenerOutputDir(output: String) extends SparkListenerEvent
+
 /**
  * Periodic updates from executors.
  * @param execId executor id

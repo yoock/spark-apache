@@ -78,6 +78,8 @@ private[spark] object JsonProtocol {
         jobStartToJson(jobStart)
       case jobEnd: SparkListenerJobEnd =>
         jobEndToJson(jobEnd)
+      case outputDir: SparkListenerOutputDir =>
+        outputUpdateToJson(outputDir.output)
       case environmentUpdate: SparkListenerEnvironmentUpdate =>
         environmentUpdateToJson(environmentUpdate)
       case blockManagerAdded: SparkListenerBlockManagerAdded =>
@@ -162,6 +164,11 @@ private[spark] object JsonProtocol {
     ("Job ID" -> jobEnd.jobId) ~
     ("Completion Time" -> jobEnd.time) ~
     ("Job Result" -> jobResult)
+  }
+
+  def outputUpdateToJson(output: String): JValue = {
+    ("Event" -> SPARK_LISTENER_EVENT_FORMATTED_CLASS_NAMES.outputDir) ~
+    ("Job output" -> output)
   }
 
   def environmentUpdateToJson(environmentUpdate: SparkListenerEnvironmentUpdate): JValue = {
@@ -532,6 +539,7 @@ private[spark] object JsonProtocol {
     val logStart = Utils.getFormattedClassName(SparkListenerLogStart)
     val metricsUpdate = Utils.getFormattedClassName(SparkListenerExecutorMetricsUpdate)
     val blockUpdate = Utils.getFormattedClassName(SparkListenerBlockUpdated)
+    val outputDir = Utils.getFormattedClassName(SparkListenerOutputDir)
   }
 
   def sparkEventFromJson(json: JValue): SparkListenerEvent = {
