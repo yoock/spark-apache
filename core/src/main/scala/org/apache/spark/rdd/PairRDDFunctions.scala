@@ -1079,6 +1079,9 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    */
   def saveAsNewAPIHadoopDataset(conf: Configuration): Unit = self.withScope {
     val config = new HadoopMapReduceWriteConfigUtil[K, V](new SerializableConfiguration(conf))
+    log.info("show outputdir is : " +  conf.get("mapreduce.output.fileoutputformat.outputdir"))
+    self.sparkContext.listenerBus.post( SparkListenerOutputDir(
+      conf.get("mapreduce.output.fileoutputformat.outputdir")))
     SparkHadoopWriter.write(
       rdd = self,
       config = config)
