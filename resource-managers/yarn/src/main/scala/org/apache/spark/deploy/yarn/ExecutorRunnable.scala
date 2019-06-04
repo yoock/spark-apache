@@ -198,7 +198,7 @@ private[yarn] class ExecutorRunnable(
     }.toSeq
 
     YarnSparkHadoopUtil.addOutOfMemoryErrorArgument(javaOpts)
-    val commands = prefixEnv ++
+    val commands = Seq("(") ++ prefixEnv ++
       Seq(Environment.JAVA_HOME.$$() + "/bin/java", "-server") ++
       javaOpts ++
       Seq("org.apache.spark.executor.CoarseGrainedExecutorBackend",
@@ -209,8 +209,10 @@ private[yarn] class ExecutorRunnable(
         "--app-id", appId) ++
       userClassPath ++
       Seq(
-        s"1>${ApplicationConstants.LOG_DIR_EXPANSION_VAR}/stdout",
-        s"2>${ApplicationConstants.LOG_DIR_EXPANSION_VAR}/stderr")
+        " < /dev/null  | rotatelogs -t ",
+        ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout 536576000B ;exit $PIPESTATUS ) 2>&1 ",
+        " |  rotatelogs -t ",
+        ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr 536576000B;exit $PIPESTATUS")
 
     // TODO: it would be nicer to just make sure there are no null commands here
     commands.map(s => if (s == null) "null" else s).toList
