@@ -131,8 +131,11 @@ abstract class QueryStage extends UnaryExecNode {
     if (leafNodes.length == queryStageInputs.length + skewedShuffleQueryStageInputs.length) {
       val childMapOutputStatistics = queryStageInputs.map(_.childStage.mapOutputStatistics)
         .filter(_ != null).toArray
-      // Right now, Adaptive execution only support HashPartitionings.
-      val supportAdaptive = queryStageInputs.forall {
+      // Right now, Adaptive execution only support HashPartitionings and the same number of
+      // pre-shuffle partitions for those stages.
+
+      // Check partitionings
+      val partitioningsCheck = queryStageInputs.forall {
         _.outputPartitioning match {
           case hash: HashPartitioning => true
           case collection: PartitioningCollection =>
@@ -141,7 +144,11 @@ abstract class QueryStage extends UnaryExecNode {
         }
       }
 
-      if (childMapOutputStatistics.length > 0 && supportAdaptive) {
+      // Check pre-shuffle partitions num
+      val numPreShufflePartitionsCheck =
+        childMapOutputStatistics.map(stats => stats.bytesByPartitionId.length).distinct.length == 1
+
+      if (childMapOutputStatistics.length > 0 && partitioningsCheck && numPreShufflePartitionsCheck) {
         val exchangeCoordinator = new ExchangeCoordinator(
           conf.targetPostShuffleInputSize,
           conf.adaptiveTargetPostShuffleRowCount,
