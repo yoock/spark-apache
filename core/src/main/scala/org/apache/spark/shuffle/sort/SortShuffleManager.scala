@@ -174,8 +174,8 @@ private[spark] object SortShuffleManager extends Logging {
    * buffering map outputs in a serialized form. This is an extreme defensive programming measure,
    * since it's extremely unlikely that a single shuffle produces over 16 million output partitions.
    * */
-  val MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE =
-    PackedRecordPointer.MAXIMUM_PARTITION_ID + 1
+  val MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE = 0
+//    PackedRecordPointer.MAXIMUM_PARTITION_ID + 1
 
   /**
    * Helper method for determining whether a shuffle should use an optimized serialized shuffle

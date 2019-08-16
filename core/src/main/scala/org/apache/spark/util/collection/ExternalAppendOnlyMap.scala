@@ -214,7 +214,8 @@ class ExternalAppendOnlyMap[K, V, C](
    */
   private[this] def spillMemoryIteratorToDisk(inMemoryIterator: Iterator[(K, C)])
       : DiskMapIterator = {
-    val (blockId, file) = diskBlockManager.createTempLocalBlock()
+//    val (blockId, file) = diskBlockManager.createTempLocalBlock()
+    val (blockId, file) = diskBlockManager.createTempShuffleBlock()
     val writer = blockManager.getDiskWriter(blockId, file, ser, fileBufferSize, writeMetrics)
     var objectsWritten = 0
 
@@ -484,7 +485,8 @@ class ExternalAppendOnlyMap[K, V, C](
         }
 
         val start = batchOffsets(batchIndex)
-        fileStream = new FileInputStream(file)
+//        fileStream = new FileInputStream(file)
+        fileStream = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getInputStream(file)
         fileStream.getChannel.position(start)
         batchIndex += 1
 

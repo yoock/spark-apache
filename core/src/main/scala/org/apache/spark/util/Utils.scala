@@ -2547,7 +2547,8 @@ private[spark] object Utils extends Logging {
    * Returns a path of temporary file which is in the same directory with `path`.
    */
   def tempFileWith(path: File): File = {
-    new File(path.getAbsolutePath + "." + UUID.randomUUID())
+//    new File(path.getAbsolutePath + "." + UUID.randomUUID())
+    return alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getTmpFile(path.getAbsolutePath);
   }
 
   /**

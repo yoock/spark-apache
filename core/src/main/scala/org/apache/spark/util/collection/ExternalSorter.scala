@@ -511,7 +511,8 @@ private[spark] class ExternalSorter[K, V, C](
         }
 
         val start = batchOffsets(batchId)
-        fileStream = new FileInputStream(spill.file)
+//        fileStream = new FileInputStream(spill.file)
+        fileStream = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getInputStream(spill.file)
         fileStream.getChannel.position(start)
         batchId += 1
 

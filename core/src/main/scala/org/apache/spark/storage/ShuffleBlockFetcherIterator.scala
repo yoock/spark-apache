@@ -124,6 +124,7 @@ final class ShuffleBlockFetcherIterator(
 
   /** Current bytes in flight from our requests */
   private[this] var bytesInFlight = 0L
+  private[this] var alluxioBytesInFlight = 0L
 
   /** Current number of requests in flight */
   private[this] var reqsInFlight = 0
@@ -263,6 +264,38 @@ final class ShuffleBlockFetcherIterator(
   }
 
   private[this] def splitLocalRemoteBlocks(): ArrayBuffer[FetchRequest] = {
+    val tmpUseAllxio: String = System.getProperty("useAlluxio")
+    if(tmpUseAllxio != null && tmpUseAllxio.trim.equals("true")) {
+      logInfo("splitLocalRemoteBlocks useAlluxio++++++++++++++++++++++++++++++++++++++++++++")
+      return splitLocalRemoteBlocksAlluxio();
+    } else {
+      logInfo("splitLocalRemoteBlocks do not useAlluxio++++++++++++++++++++++++++++++++++++++++++++")
+      return splitLocalRemoteBlocksNoAlluxio();
+    }
+  }
+
+  case class AlluxioFetchRequest(blockId: BlockId, size: Long)
+  private[this] val alluxioFetchRequests = Queue[AlluxioFetchRequest]()
+
+  private[this] def splitLocalRemoteBlocksAlluxio(): ArrayBuffer[FetchRequest] = {
+    val remoteRequests = new ArrayBuffer[FetchRequest]
+    var totalBlocks = 0
+    for ((address, blockInfos) <- blocksByAddress) {
+      totalBlocks += blockInfos.size
+      val iterator = blockInfos.iterator
+      while (iterator.hasNext) {
+        val (blockId, size) = iterator.next()
+        if(blockId.isInstanceOf[ShuffleBlockId] && size > 0) {
+          alluxioFetchRequests += AlluxioFetchRequest(blockId, size)
+          numBlocksToFetch += 1
+        }
+      }
+    }
+    remoteRequests
+  }
+
+  private[this] def splitLocalRemoteBlocksNoAlluxio(): ArrayBuffer[FetchRequest] = {
+//  private[this] def splitLocalRemoteBlocks(): ArrayBuffer[FetchRequest] = {
     // Make remote requests at most maxBytesInFlight / 5 in length; the reason to keep them
     // smaller than maxBytesInFlight is to allow multiple, parallel fetches from up to 5
     // nodes, rather than blocking on reading output from one node.
@@ -328,6 +361,31 @@ final class ShuffleBlockFetcherIterator(
    * track in-memory are the ManagedBuffer references themselves.
    */
   private[this] def fetchLocalBlocks() {
+    while (alluxioFetchRequests.nonEmpty && alluxioBytesInFlight + alluxioFetchRequests.front.size <= maxBytesInFlight) {
+      val blockIdWithSize = alluxioFetchRequests.dequeue()
+      val blockId = blockIdWithSize.blockId
+      alluxioBytesInFlight += blockIdWithSize.size
+      new Thread(new Runnable {
+        override def run(): Unit = {
+          try {
+            val buf = blockManager.getBlockData(blockId)
+            shuffleMetrics.incLocalBlocksFetched(1)
+            shuffleMetrics.incLocalBytesRead(buf.size)
+            buf.retain()
+            results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId,buf.size(), buf, false))
+          } catch {
+            case e: Exception =>
+              logError(s"Error occurred while fetching local blocks", e)
+              results.put(new FailureFetchResult(blockId, blockManager.blockManagerId, e))
+              return
+          }
+        }
+      }).start()
+    }
+    //    fixedThreadPool.shutdown()
+    //    fixedThreadPool.awaitTermination(Long.MaxValue, TimeUnit.MINUTES)
+  }
+  /*private[this] def fetchLocalBlocks() {
     logDebug(s"Start fetching local blocks: ${localBlocks.mkString(", ")}")
     val iter = localBlocks.iterator
     while (iter.hasNext) {
@@ -347,7 +405,7 @@ final class ShuffleBlockFetcherIterator(
           return
       }
     }
-  }
+  }*/
 
   private[this] def initialize(): Unit = {
     // Add a task completion callback (called in both success case and failure case) to cleanup.

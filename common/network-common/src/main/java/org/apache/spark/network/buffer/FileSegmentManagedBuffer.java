@@ -97,7 +97,8 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
     FileInputStream is = null;
     boolean shouldClose = true;
     try {
-      is = new FileInputStream(file);
+//      is = new FileInputStream(file);
+        is = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext().getInputStream(file);
       ByteStreams.skipFully(is, offset);
       InputStream r = new LimitedInputStream(is, length);
       shouldClose = false;

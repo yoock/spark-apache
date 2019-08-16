@@ -100,7 +100,8 @@ private[spark] class DiskBlockObjectWriter(
   private var numRecordsWritten = 0
 
   private def initialize(): Unit = {
-    fos = new FileOutputStream(file, true)
+//    fos = new FileOutputStream(file, true)
+    fos = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getOutputStream(file)
     channel = fos.getChannel()
     ts = new TimeTrackingOutputStream(writeMetrics, fos)
     class ManualCloseBufferedOutputStream
@@ -212,7 +213,7 @@ private[spark] class DiskBlockObjectWriter(
         closeResources()
       }
     } {
-      var truncateStream: FileOutputStream = null
+      /*var truncateStream: FileOutputStream = null
       try {
         truncateStream = new FileOutputStream(file, true)
         truncateStream.getChannel.truncate(committedPosition)
@@ -224,7 +225,8 @@ private[spark] class DiskBlockObjectWriter(
           truncateStream.close()
           truncateStream = null
         }
-      }
+      }*/
+      alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.truncateAlluxioFile(file, committedPosition)
     }
     file
   }

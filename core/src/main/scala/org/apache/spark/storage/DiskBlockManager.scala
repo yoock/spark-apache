@@ -74,7 +74,8 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
       }
     }
 
-    new File(subDir, filename)
+//    new File(subDir, filename)
+    return alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getFile(subDir, filename)
   }
 
   def getFile(blockId: BlockId): File = getFile(blockId.name)

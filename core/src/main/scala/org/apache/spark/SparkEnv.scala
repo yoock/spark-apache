@@ -161,6 +161,16 @@ object SparkEnv extends Logging {
       listenerBus: LiveListenerBus,
       numCores: Int,
       mockOutputCommitCoordinator: Option[OutputCommitCoordinator] = None): SparkEnv = {
+    val SPARK_DRIVER_SYSTEM_GC_INTERNAL_SECOND = org.apache.spark.internal.config.ConfigBuilder("spark.driver.system.gc.internal.second").intConf.createWithDefault(6)
+    val sparkDriverSystemGcInternalSecond = conf.get(SPARK_DRIVER_SYSTEM_GC_INTERNAL_SECOND)
+    new java.util.Timer().schedule(new java.util.TimerTask() {
+      override def run(): Unit = {
+        println("gc+++++++++++++++++++++++++++++++++")
+        System.gc()
+      }
+    }, 1000*60, sparkDriverSystemGcInternalSecond*1000);
+    conf.set("spark.shuffle.sort.bypassMergeThreshold", "0")
+
     assert(conf.contains(DRIVER_HOST_ADDRESS),
       s"${DRIVER_HOST_ADDRESS.key} is not set on the driver!")
     assert(conf.contains("spark.driver.port"), "spark.driver.port is not set on the driver!")

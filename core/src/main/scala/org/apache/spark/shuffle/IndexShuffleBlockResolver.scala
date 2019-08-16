@@ -156,7 +156,8 @@ private[spark] class IndexShuffleBlockResolver(
         } else {
           // This is the first successful attempt in writing the map outputs for this task,
           // so override any existing index and data files with the ones we wrote.
-          val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexTmp)))
+//          val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexTmp)))
+          val out = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getDataOutputStream(indexTmp)
           Utils.tryWithSafeFinally {
             // We take in lengths of each block, need to convert it to offsets.
             var offset = 0L
@@ -201,18 +202,20 @@ private[spark] class IndexShuffleBlockResolver(
     // checks added here were a useful debugging aid during SPARK-22982 and may help prevent this
     // class of issue from re-occurring in the future which is why they are left here even though
     // SPARK-22982 is fixed.
-    val channel = Files.newByteChannel(indexFile.toPath)
-    channel.position(blockId.reduceId * 8L)
-    val in = new DataInputStream(Channels.newInputStream(channel))
+//    val channel = Files.newByteChannel(indexFile.toPath)
+//    channel.position(blockId.reduceId * 8L)
+//    val in = new DataInputStream(Channels.newInputStream(channel))
+    val in = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getDataInputStream(indexFile, blockId.reduceId * 8L)
+
     try {
       val offset = in.readLong()
       val nextOffset = in.readLong()
-      val actualPosition = channel.position()
+      /*val actualPosition = channel.position()
       val expectedPosition = blockId.reduceId * 8L + 16
       if (actualPosition != expectedPosition) {
         throw new Exception(s"SPARK-22982: Incorrect channel position after index file reads: " +
           s"expected $expectedPosition but actual position was $actualPosition.")
-      }
+      }*/
       new FileSegmentManagedBuffer(
         transportConf,
         getDataFile(blockId.shuffleId, blockId.mapId),
