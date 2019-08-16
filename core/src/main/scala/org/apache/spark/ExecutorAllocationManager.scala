@@ -283,11 +283,17 @@ private[spark] class ExecutorAllocationManager(
    * The maximum number of executors we would need under the current load to satisfy all running
    * and pending tasks, rounded up.
    */
+  val SPARK_THRIFT_LIMIT = org.apache.spark.internal.config.ConfigBuilder("spark.thrift.limit").intConf.createWithDefault(10)
+  private val sparkThriftLimit = SparkEnv.get.conf.get(SPARK_THRIFT_LIMIT)
   private def maxNumExecutorsNeeded(): Int = {
     val numRunningOrPendingTasks = listener.totalPendingTasks + listener.totalRunningTasks
-    math.ceil(numRunningOrPendingTasks * executorAllocationRatio /
-              tasksPerExecutorForFullParallelism)
-      .toInt
+    val maxNumExecutorsNeed = (numRunningOrPendingTasks + tasksPerExecutor - 1) / tasksPerExecutor
+    val limitExecutorNum = listener.totalJobs() * sparkThriftLimit
+    if(maxNumExecutorsNeed <= limitExecutorNum) {
+      maxNumExecutorsNeed
+    } else {
+      limitExecutorNum
+    }
   }
 
   private def totalRunningTasks(): Int = synchronized {
@@ -658,6 +664,15 @@ private[spark] class ExecutorAllocationManager(
     // maintain the executor placement hints for each stage Id used by resource framework to better
     // place the executors.
     private val stageIdToExecutorPlacementHints = new mutable.HashMap[Int, (Int, Map[String, Int])]
+
+    private var jobNum : Int = 0
+    override def onJobStart(jobStart: SparkListenerJobStart): Unit = {
+      jobNum += 1
+    }
+    override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
+      jobNum -= 1
+    }
+    def totalJobs(): Int = jobNum
 
     override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
       initializing = false
