@@ -30,9 +30,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -40,7 +38,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
-import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
+import org.apache.spark.rdd._
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
@@ -1175,29 +1173,102 @@ private[spark] class DAGScheduler(
         return
     }
 
+
+    val useAe = SparkEnv.get.conf.getBoolean("spark.use.ae", false) && !SparkEnv.get.conf.getBoolean("spark.sql.adaptive.enabled", false)
+    var partitionIndex:Array[Int] = null;
+    try {
+      logError("useAe:"+useAe)
+      logError("partitionIndex.length:"+partitionIndex.length)
+      partitionIndex.take(10).map(x=>logError(x+","))
+      logError("isInstanceOf[ShuffledRDDPartition]:"+partitions(0).isInstanceOf[ShuffledRDDPartition])
+    } catch {
+      case e:Exception =>
+    }
+
+    if (useAe) {
+      val mapOutputTrackerMaster = SparkEnv.get.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster];
+      val statisticsList = stage.parents.map(_.asInstanceOf[ShuffleMapStage].shuffleDep).map(mapOutputTrackerMaster.getStatistics(_));
+      if (!statisticsList.isEmpty) {
+        partitionIndex = org.apache.spark.ae.Utils.estimatePartitionStartEndIndices(statisticsList)
+        //      partitionIndex.map(x=>print(x+","))
+        //      println()
+      }
+    }
+
     val tasks: Seq[Task[_]] = try {
       val serializedTaskMetrics = closureSerializer.serialize(stage.latestInfo.taskMetrics).array()
       stage match {
         case stage: ShuffleMapStage =>
-          stage.pendingPartitions.clear()
-          partitionsToCompute.map { id =>
-            val locs = taskIdToLocations(id)
-            val part = partitions(id)
-            stage.pendingPartitions += id
-            new ShuffleMapTask(stage.id, stage.latestInfo.attemptNumber,
-              taskBinary, part, locs, properties, serializedTaskMetrics, Option(jobId),
-              Option(sc.applicationId), sc.applicationAttemptId, stage.rdd.isBarrier())
+          if (useAe && partitionIndex != null && partitions != null && partitions.length > 0 && (partitions(0).isInstanceOf[ShuffledRDDPartition] || partitions(0).isInstanceOf[CoGroupPartition])) {
+//            println("mapStage")
+            stage.pendingPartitions.clear()
+            var preIndex = 0
+            val taskArray = new Array[Task[_]](partitionsToCompute.length)
+            stage.pendingPartitions.clear()
+            partitionsToCompute.map { id =>
+              stage.pendingPartitions += id
+              if (id < partitionIndex.length) {
+//                println(id)
+                val part = AEShuffledRDDPartition(id, preIndex, partitionIndex(id));
+                val task = new ShuffleMapTask(stage.id, stage.latestInfo.attemptNumber,
+                  taskBinary, part, null, properties, serializedTaskMetrics, Option(jobId),
+                  Option(sc.applicationId), sc.applicationAttemptId)
+                taskArray(id) = task
+                preIndex = partitionIndex(id)
+              } else {
+                val part = AEShuffledRDDPartition(id, -1, -1);
+                val task = new ShuffleMapTask(stage.id, stage.latestInfo.attemptNumber,
+                  taskBinary, part, null, properties, serializedTaskMetrics, Option(jobId),
+                  Option(sc.applicationId), sc.applicationAttemptId)
+                taskArray(id) = task
+              }
+            }
+            taskArray
+          } else {
+            stage.pendingPartitions.clear()
+            partitionsToCompute.map { id =>
+              val locs = taskIdToLocations(id)
+              val part = partitions(id)
+              stage.pendingPartitions += id
+              new ShuffleMapTask(stage.id, stage.latestInfo.attemptNumber,
+                taskBinary, part, locs, properties, serializedTaskMetrics, Option(jobId),
+                Option(sc.applicationId), sc.applicationAttemptId, stage.rdd.isBarrier())
+            }
           }
 
         case stage: ResultStage =>
-          partitionsToCompute.map { id =>
-            val p: Int = stage.partitions(id)
-            val part = partitions(p)
-            val locs = taskIdToLocations(id)
-            new ResultTask(stage.id, stage.latestInfo.attemptNumber,
-              taskBinary, part, locs, id, properties, serializedTaskMetrics,
-              Option(jobId), Option(sc.applicationId), sc.applicationAttemptId,
-              stage.rdd.isBarrier())
+          if (useAe && partitionIndex != null && partitions != null && partitions.length > 0 && (partitions(0).isInstanceOf[ShuffledRDDPartition] || partitions(0).isInstanceOf[CoGroupPartition])) {
+//            println("resultStage")
+            var preIndex = 0
+            val taskArray = new Array[Task[_]](partitionsToCompute.length)
+            partitionsToCompute.map { id =>
+              if (id < partitionIndex.length) {
+//                println(id)
+                val part = AEShuffledRDDPartition(id, preIndex, partitionIndex(id));
+                val task = new ResultTask(stage.id, stage.latestInfo.attemptNumber,
+                  taskBinary, part, null, id, properties, serializedTaskMetrics,
+                  Option(jobId), Option(sc.applicationId), sc.applicationAttemptId)
+                preIndex = partitionIndex(id)
+                taskArray(id) = task
+              } else {
+                val part = AEShuffledRDDPartition(id, -1, -1);
+                val task = new ResultTask(stage.id, stage.latestInfo.attemptNumber,
+                  taskBinary, part, null, id, properties, serializedTaskMetrics,
+                  Option(jobId), Option(sc.applicationId), sc.applicationAttemptId)
+                taskArray(id) = task
+              }
+            }
+            taskArray
+          } else {
+            partitionsToCompute.map { id =>
+              val p: Int = stage.partitions(id)
+              val part = partitions(p)
+              val locs = taskIdToLocations(id)
+              new ResultTask(stage.id, stage.latestInfo.attemptNumber,
+                taskBinary, part, locs, id, properties, serializedTaskMetrics,
+                Option(jobId), Option(sc.applicationId), sc.applicationAttemptId,
+                stage.rdd.isBarrier())
+            }
           }
       }
     } catch {

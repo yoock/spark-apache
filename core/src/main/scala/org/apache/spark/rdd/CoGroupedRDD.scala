@@ -129,35 +129,66 @@ class CoGroupedRDD[K: ClassTag](
   override val partitioner: Some[Partitioner] = Some(part)
 
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
-    val split = s.asInstanceOf[CoGroupPartition]
-    val numRdds = dependencies.length
+    if (s.isInstanceOf[AEShuffledRDDPartition]) {
+      val split = s.asInstanceOf[AEShuffledRDDPartition]
+      val numRdds = dependencies.length
+      val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
+      for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
+        case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
+          val it = oneToOneDependency.rdd.iterator(split, context)
+          rddIterators += ((it, depNum))
 
-    // A list of (rdd iterator, dependency number) pairs
-    val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
-    for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
-      case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
-        val dependencyPartition = split.narrowDeps(depNum).get.split
-        // Read them from the parent
-        val it = oneToOneDependency.rdd.iterator(dependencyPartition, context)
-        rddIterators += ((it, depNum))
+        case shuffleDependency: ShuffleDependency[_, _, _] =>
+          if (split.startPartition == -1) {
+            Iterator.empty;
+          } else {
+            val it = SparkEnv.get.shuffleManager
+              .getReader(shuffleDependency.shuffleHandle, split.startPartition, split.endPartition, context)
+              .read()
+            rddIterators += ((it, depNum))
+          }
+      }
 
-      case shuffleDependency: ShuffleDependency[_, _, _] =>
-        // Read map outputs of shuffle
-        val it = SparkEnv.get.shuffleManager
-          .getReader(shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
-          .read()
-        rddIterators += ((it, depNum))
+      val map = createExternalMap(numRdds)
+      for ((it, depNum) <- rddIterators) {
+        map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
+      }
+      context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
+      context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
+      context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
+      new InterruptibleIterator(context,
+        map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
+    } else {
+      val split = s.asInstanceOf[CoGroupPartition]
+      val numRdds = dependencies.length
+
+      // A list of (rdd iterator, dependency number) pairs
+      val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
+      for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
+        case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
+          val dependencyPartition = split.narrowDeps(depNum).get.split
+          // Read them from the parent
+          val it = oneToOneDependency.rdd.iterator(dependencyPartition, context)
+          rddIterators += ((it, depNum))
+
+        case shuffleDependency: ShuffleDependency[_, _, _] =>
+          // Read map outputs of shuffle
+          val it = SparkEnv.get.shuffleManager
+            .getReader(shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
+            .read()
+          rddIterators += ((it, depNum))
+      }
+
+      val map = createExternalMap(numRdds)
+      for ((it, depNum) <- rddIterators) {
+        map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
+      }
+      context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
+      context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
+      context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
+      new InterruptibleIterator(context,
+        map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
     }
-
-    val map = createExternalMap(numRdds)
-    for ((it, depNum) <- rddIterators) {
-      map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
-    }
-    context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
-    context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
-    context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
-    new InterruptibleIterator(context,
-      map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
   }
 
   private def createExternalMap(numRdds: Int)

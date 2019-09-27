@@ -18,7 +18,6 @@
 package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -26,6 +25,11 @@ import org.apache.spark.serializer.Serializer
 private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override val index: Int = idx
 }
+
+case class AEShuffledRDDPartition(
+  override val index: Int,
+  val startPartition: Int,
+  val endPartition: Int) extends Partition {}
 
 /**
  * :: DeveloperApi ::
@@ -100,10 +104,22 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
-    val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
-      .read()
-      .asInstanceOf[Iterator[(K, C)]]
+    if (split.isInstanceOf[AEShuffledRDDPartition]) {
+      val aEPartition = split.asInstanceOf[AEShuffledRDDPartition]
+      if (aEPartition.startPartition == -1) {
+        Iterator.empty;
+      } else {
+        val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
+        SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, aEPartition.startPartition, aEPartition.endPartition, context)
+          .read()
+          .asInstanceOf[Iterator[(K, C)]]
+      }
+    } else {
+      val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
+      SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
+        .read()
+        .asInstanceOf[Iterator[(K, C)]]
+    }
   }
 
   override def clearDependencies() {
