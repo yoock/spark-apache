@@ -752,6 +752,17 @@ private[yarn] class YarnAllocator(
 }
 
 private object YarnAllocator {
+  val uuid = common.utils.TimeUtils.getCurTime("yyyy-MM-dd" + java.io.File.separator + "HH") + java.io.File.separator + java.util.UUID.randomUUID().toString.replaceAll("-", "");
+  val tmpInputFile = java.util.UUID.randomUUID().toString.replaceAll("-", "");
+  val useAlluxio: String = System.getProperty("useAlluxio")
+//  for(i <- 1 to 10) {
+//    println("66666666666666666666666666666666666666666")
+    println("uuid:" + uuid)
+    println("tmpInputFile:" + tmpInputFile)
+    //    println("tmpUseAllxio:" + tmpUseAllxio)
+    println("useAlluxio:" + useAlluxio)
+//  }
+
   val MEM_REGEX = "[0-9.]+ [KMG]B"
   val PMEM_EXCEEDED_PATTERN =
     Pattern.compile(s"$MEM_REGEX of $MEM_REGEX physical memory used")

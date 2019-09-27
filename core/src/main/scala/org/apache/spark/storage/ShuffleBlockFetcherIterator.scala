@@ -153,6 +153,18 @@ final class ShuffleBlockFetcherIterator(
   @GuardedBy("this")
   private[this] val shuffleFilesSet = mutable.HashSet[DownloadFile]()
 
+  val toBeFetchBlockIdSet = mutable.HashSet[String]()
+  def removeBlockId(blockId: String): Unit = {
+    if (!toBeFetchBlockIdSet.contains(blockId)) {
+      println("no exists:" + blockId)
+      return
+    }
+    toBeFetchBlockIdSet.remove(blockId)
+    //    if(successBlockIdSet.size < 10) {
+    println(toBeFetchBlockIdSet.size)
+    //    }
+  }
+
   initialize()
 
   // Decrements the buffer reference count.
@@ -238,6 +250,7 @@ final class ShuffleBlockFetcherIterator(
             remainingBlocks -= blockId
             results.put(new SuccessFetchResult(BlockId(blockId), address, sizeMap(blockId), buf,
               remainingBlocks.isEmpty))
+            removeBlockId(BlockId(blockId).toString)
             logDebug("remainingBlocks: " + remainingBlocks)
           }
         }
@@ -245,8 +258,36 @@ final class ShuffleBlockFetcherIterator(
       }
 
       override def onBlockFetchFailure(blockId: String, e: Throwable): Unit = {
-        logError(s"Failed to get block(s) from ${req.address.host}:${req.address.port}", e)
-        results.put(new FailureFetchResult(BlockId(blockId), address, e))
+        if(!toBeFetchBlockIdSet.contains(BlockId(blockId).toString)) {
+          return
+        }
+        val useAlluxio = org.apache.spark.SparkEnv.get.conf.getBoolean("spark.use.alluxio", false)
+        //        println("shuffle failed:" + blockId + "\t" + useAlluxio)
+        if (useAlluxio) {
+          try {
+            val buf = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getBlockData(BlockId(blockId).asInstanceOf[ShuffleBlockId])
+            ShuffleBlockFetcherIterator.this.synchronized {
+              if (!isZombie) {
+                // Increment the ref count because we need to pass this to a different thread.
+                // This needs to be released after use.
+                buf.retain()
+                remainingBlocks -= blockId
+                results.put(new SuccessFetchResult(BlockId(blockId), address, sizeMap(blockId), buf,
+                  remainingBlocks.isEmpty))
+                removeBlockId(BlockId(blockId).toString)
+                logDebug("remainingBlocks: " + remainingBlocks)
+              }
+            }
+            logTrace("Got remote block " + blockId + " after " + Utils.getUsedTimeMs(startTime))
+          } catch {
+            case e: Exception =>
+              logError(s"Failed to get block(s) from ${req.address.host}:${req.address.port}", e)
+              results.put(new FailureFetchResult(BlockId(blockId), address, e))
+          }
+        } else {
+          logError(s"Failed to get block(s) from ${req.address.host}:${req.address.port}", e)
+          results.put(new FailureFetchResult(BlockId(blockId), address, e))
+        }
       }
     }
 
@@ -275,6 +316,7 @@ final class ShuffleBlockFetcherIterator(
     val remoteRequests = new ArrayBuffer[FetchRequest]
 
     for ((address, blockInfos) <- blocksByAddress) {
+      toBeFetchBlockIdSet ++= blockInfos.map(_._1.toString)
       if (address.executorId == blockManager.blockManagerId.executorId) {
         blockInfos.find(_._2 <= 0) match {
           case Some((blockId, size)) if size < 0 =>
@@ -339,12 +381,35 @@ final class ShuffleBlockFetcherIterator(
         buf.retain()
         results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId,
           buf.size(), buf, false))
+        removeBlockId(blockId.toString)
       } catch {
         case e: Exception =>
-          // If we see an exception, stop immediately.
-          logError(s"Error occurred while fetching local blocks", e)
-          results.put(new FailureFetchResult(blockId, blockManager.blockManagerId, e))
-          return
+          if(!toBeFetchBlockIdSet.contains(blockId.toString)) {
+            return
+          }
+          val useAlluxio = org.apache.spark.SparkEnv.get.conf.getBoolean("spark.use.alluxio", false)
+          //          println("shuffle failed:" + blockId + "\t" + useAlluxio + "+++++++++++++++++++++++++++++++")
+          if (useAlluxio) {
+            try {
+              val buf = alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
+              shuffleMetrics.incLocalBlocksFetched(1)
+              shuffleMetrics.incLocalBytesRead(buf.size)
+              buf.retain()
+              results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId,
+                buf.size(), buf, false))
+              removeBlockId(blockId.toString)
+            } catch {
+              case e: Exception =>
+                logError(s"Error occurred while fetching local blocks", e)
+                results.put(new FailureFetchResult(blockId, blockManager.blockManagerId, e))
+                return
+            }
+          } else {
+            // If we see an exception, stop immediately.
+            logError(s"Error occurred while fetching local blocks", e)
+            results.put(new FailureFetchResult(blockId, blockManager.blockManagerId, e))
+            return
+          }
       }
     }
   }

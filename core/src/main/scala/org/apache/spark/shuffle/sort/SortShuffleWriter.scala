@@ -70,6 +70,10 @@ private[spark] class SortShuffleWriter[K, V, C](
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
       val mapInfo = sorter.writePartitionedFile(blockId, tmp)
       shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, mapInfo.lengths, tmp)
+
+      val shuffleDataBlockId = new org.apache.spark.storage.ShuffleDataBlockId(dep.shuffleId, mapId, 0)
+      alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.putShuffleDataToAlluxio(output, shuffleDataBlockId.name)
+
       mapStatus = MapStatus(blockManager.shuffleServerId, mapInfo.lengths, mapInfo.records)
     } finally {
       if (tmp.exists() && !tmp.delete()) {

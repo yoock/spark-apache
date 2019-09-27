@@ -243,6 +243,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, mapInfo.lengths, tmp);
+
+      org.apache.spark.storage.ShuffleBlockId shuffleDataBlockId = new org.apache.spark.storage.ShuffleBlockId(shuffleId, mapId, 0);
+      alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext().putShuffleDataToAlluxio(output, shuffleDataBlockId.name());
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());

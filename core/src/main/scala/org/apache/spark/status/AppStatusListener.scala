@@ -164,6 +164,7 @@ private[spark] class AppStatusListener(
   }
 
   override def onApplicationEnd(event: SparkListenerApplicationEnd): Unit = {
+    alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.cleanApplicationData()
     val old = appInfo.attempts.head
     val attempt = v1.ApplicationAttemptInfo(
       old.attemptId,

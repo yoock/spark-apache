@@ -181,6 +181,9 @@ private[spark] class IndexShuffleBlockResolver(
           if (dataTmp != null && dataTmp.exists() && !dataTmp.renameTo(dataFile)) {
             throw new IOException("fail to rename file " + dataTmp + " to " + dataFile)
           }
+
+          val shuffleIndexBlockId = new org.apache.spark.storage.ShuffleIndexBlockId(shuffleId, mapId, 0)
+          alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext.putShuffleDataToAlluxio(indexFile, shuffleIndexBlockId.name)
         }
       }
     } finally {

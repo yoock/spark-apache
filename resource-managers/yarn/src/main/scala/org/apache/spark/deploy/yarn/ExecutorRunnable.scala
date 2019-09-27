@@ -186,6 +186,10 @@ private[yarn] class ExecutorRunnable(
 
     // For log4j configuration to reference
     javaOpts += ("-Dspark.yarn.app.container.log.dir=" + ApplicationConstants.LOG_DIR_EXPANSION_VAR)
+    javaOpts += ("-Duuid=" + YarnAllocator.uuid)
+    javaOpts += ("-DuseAlluxio=" + YarnAllocator.useAlluxio)
+    javaOpts += ("-DtmpInputFile=" + YarnAllocator.tmpInputFile)
+    //    javaOpts += ("-Dexecutor=Client," + YarnAllocator.tmpUseAllxio)
 
     val userClassPath = Client.getUserClasspath(sparkConf).flatMap { uri =>
       val absPath =

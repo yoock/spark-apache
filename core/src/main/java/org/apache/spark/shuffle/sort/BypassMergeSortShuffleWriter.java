@@ -164,6 +164,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       mapInfo = writePartitionedFile(tmp);
       partitionLengths = mapInfo.lengths;
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+
+      ShuffleDataBlockId shuffleDataBlockId = new ShuffleDataBlockId(shuffleId, mapId, 0);
+      alluxio.shuffle.AlluxioContext.Factory.getAlluxioContext().putShuffleDataToAlluxio(output, shuffleDataBlockId.name());
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());

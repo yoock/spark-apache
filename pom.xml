@@ -295,6 +295,11 @@
       <artifactId>junit-interface</artifactId>
       <scope>test</scope>
     </dependency>
+      <dependency>
+          <groupId>cn.wanglong.alluxio.util</groupId>
+          <artifactId>alluxio-spark-shuffle-util</artifactId>
+          <version>1.0.0</version>
+      </dependency>
   </dependencies>
   <dependencyManagement>
     <dependencies>
