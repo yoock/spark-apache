@@ -159,7 +159,8 @@ object SparkEnv extends Logging {
       listenerBus: LiveListenerBus,
       numCores: Int,
       mockOutputCommitCoordinator: Option[OutputCommitCoordinator] = None): SparkEnv = {
-    conf.set("spark.app.uuid", UUID.randomUUID().toString)
+    val uuid = common.utils.TimeUtils.getCurTime("yyyy-MM-dd" + java.io.File.separator + "HH") + java.io.File.separator + java.util.UUID.randomUUID().toString.replaceAll("-", "");
+    conf.set("spark.app.uuid", uuid)
     assert(conf.contains(DRIVER_HOST_ADDRESS),
       s"${DRIVER_HOST_ADDRESS.key} is not set on the driver!")
     assert(conf.contains("spark.driver.port"), "spark.driver.port is not set on the driver!")
