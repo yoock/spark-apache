@@ -38,6 +38,7 @@ import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer.HIVE_COLUMN_ORDER_AS
 import org.apache.hadoop.hive.ql.processors._
 import org.apache.hadoop.hive.ql.session.SessionState
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.{SparkConf, SparkException}
 import org.apache.spark.internal.Logging
 import org.apache.spark.metrics.source.HiveCatalogMetrics
@@ -941,7 +942,15 @@ private[hive] object HiveClientImpl {
     userName.foreach(hiveTable.setOwner)
     hiveTable.setCreateTime((table.createTime / 1000).toInt)
     hiveTable.setLastAccessTime((table.lastAccessTime / 1000).toInt)
-    table.storage.locationUri.map(CatalogUtils.URIToString).foreach { loc =>
+    table.storage.locationUri.map(CatalogUtils.URIToString).foreach { x =>
+      var loc = x;
+      if (SparkEnv.get.conf.getBoolean("spark.insert.orc", false)) {
+        loc = loc.replaceAll(SparkEnv.get.conf.get("spark.insert.orc.old"), SparkEnv.get.conf.get("spark.insert.orc.new"))
+        for (i <- 0 to 9) {
+          println(loc)
+          println("--------------------------------------HiveClientImpl")
+        }
+      }
       hiveTable.getTTable.getSd.setLocation(loc)}
     table.storage.inputFormat.map(toInputFormat).foreach(hiveTable.setInputFormatClass)
     table.storage.outputFormat.map(toOutputFormat).foreach(hiveTable.setOutputFormatClass)

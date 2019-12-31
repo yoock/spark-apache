@@ -22,6 +22,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hive.ql.ErrorMsg
 import org.apache.hadoop.hive.ql.plan.TableDesc
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.SparkException
 import org.apache.spark.sql.{AnalysisException, Row, SparkSession}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, ExternalCatalog}
@@ -199,13 +200,20 @@ case class InsertIntoHiveTable(
       fileSinkConf = fileSinkConf,
       outputLocation = tmpLocation.toString,
       partitionAttributes = partitionAttributes)
-
+    var viewFsPath = tmpLocation.toString;
+    if (SparkEnv.get.conf.getBoolean("spark.insert.orc", false)) {
+      viewFsPath = viewFsPath.replaceAll(SparkEnv.get.conf.get("spark.insert.orc.new"), SparkEnv.get.conf.get("spark.insert.orc.old"))
+      for (i <- 0 to 9) {
+        println(viewFsPath)
+        println("--------------------------------------InsertIntoHiveTable")
+      }
+    }
     if (partition.nonEmpty) {
       if (numDynamicPartitions > 0) {
         externalCatalog.loadDynamicPartitions(
           db = table.database,
           table = table.identifier.table,
-          tmpLocation.toString,
+          viewFsPath,
           partitionSpec,
           overwrite,
           numDynamicPartitions)
@@ -248,7 +256,7 @@ case class InsertIntoHiveTable(
           externalCatalog.loadPartition(
             table.database,
             table.identifier.table,
-            tmpLocation.toString,
+            viewFsPath,
             partitionSpec,
             isOverwrite = doHiveOverwrite,
             inheritTableSpecs = inheritTableSpecs,
@@ -259,7 +267,7 @@ case class InsertIntoHiveTable(
       externalCatalog.loadTable(
         table.database,
         table.identifier.table,
-        tmpLocation.toString, // TODO: URI
+        viewFsPath, // TODO: URI
         overwrite,
         isSrcLocal = false)
     }
