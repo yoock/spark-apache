@@ -85,6 +85,7 @@ private[yarn] class ExecutorRunnable(
   def startContainer(): java.util.Map[String, ByteBuffer] = {
     val ctx = Records.newRecord(classOf[ContainerLaunchContext])
       .asInstanceOf[ContainerLaunchContext]
+//    ctx.setContainerExecutorType(ContainerExecutorType.DOCKER)
     val env = prepareEnvironment().asJava
 
     ctx.setLocalResources(localResources.asJava)

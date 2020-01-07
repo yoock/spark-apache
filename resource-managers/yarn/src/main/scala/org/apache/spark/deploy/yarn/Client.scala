@@ -177,7 +177,8 @@ private[spark] class Client(
       // Set up the appropriate contexts to launch our AM
       val containerContext = createContainerLaunchContext(newAppResponse)
       val appContext = createApplicationSubmissionContext(newApp, containerContext)
-
+//      containerContext.setContainerExecutorType(ContainerExecutorType.DOCKER)
+//      appContext.setAMContainerExecutorType(ContainerExecutorType.DOCKER)
       // Finally, submit and monitor the application
       logInfo(s"Submitting application $appId to ResourceManager")
       yarnClient.submitApplication(appContext)
